@@ -3,7 +3,6 @@ from ultralytics import YOLO
 from PIL import Image
 import tempfile
 import os
-from supabase import create_client, Client
 
 # ---------------------------------------------------------
 # 1. إعدادات الصفحة والتصميم
@@ -20,19 +19,10 @@ if os.path.exists("style.css"):
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. الإعداد والربط بقاعدة بيانات Supabase
+# 2. تهيئة الذاكرة المؤقتة للبلاغات
 # ---------------------------------------------------------
-SUPABASE_URL = "https://lja-u87h8j10nde0zu-2cq-bfsgkq-8.supabase.co"
-SUPABASE_KEY = "sb_publishable_ljA_u87H8J10nDE0zu_2CQ_BFsGKq_8"
-
-@st.cache_resource
-def init_supabase() -> Client:
-    try:
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception as e:
-        return None
-
-supabase = init_supabase()
+if 'reports' not in st.session_state:
+    st.session_state['reports'] = []
 
 # ---------------------------------------------------------
 # 3. تحميل نموذج الذكاء الاصطناعي (YOLO)
@@ -82,50 +72,37 @@ if page == "تقديم بلاغ جديد":
                     st.error("النموذج (best.pt) غير متوفر حالياً.")
                 else:
                     with st.spinner("جاري تحليل الصورة بواسطة الذكاء الاصطناعي..."):
-                        try:
-                            # حفظ مؤقت للصورة للتحليل
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                                image.convert("RGB").save(tmp.name)
-                                tmp_path = tmp.name
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                            image.convert("RGB").save(tmp.name)
+                            tmp_path = tmp.name
 
-                            results = model(tmp_path)
-                            res = results[0]
+                        results = model(tmp_path)
+                        res = results[0]
 
-                            detections = len(res.boxes)
-                            confidence_val = 0.0
-                            if detections > 0:
-                                confidence_val = float(res.boxes.conf.max() * 100)
+                        detections = len(res.boxes)
+                        confidence_val = 0.0
+                        if detections > 0:
+                            confidence_val = float(res.boxes.conf.max() * 100)
 
-                            st.subheader("📊 نتيجة التحليل:")
-                            if detections > 0:
-                                st.error(f"⚠️ تم رصد عدد ({detections}) حفرية/عيب بنسبة دقة {confidence_val:.1f}%")
-                            else:
-                                st.success("✅ لم يتم رصد عيوب واضحة في الصورة.")
+                        st.subheader("📊 نتيجة التحليل:")
+                        if detections > 0:
+                            st.error(f"⚠️ تم رصد عدد ({detections}) حفرية/عيب بنسبة دقة {confidence_val:.1f}%")
+                        else:
+                            st.success("✅ لم يتم رصد عيوب واضحة في الصورة.")
 
-                            # تجهيز بيانات البلاغ
-                            report_data = {
-                                "city": city,
-                                "district": district,
-                                "street": street,
-                                "detections": detections,
-                                "confidence": f"{confidence_val:.1f}%",
-                                "status": "قيد المعالجة"
-                            }
-
-                            # الحفظ في Supabase
-                            if supabase:
-                                try:
-                                    res_db = supabase.table("reports").insert(report_data).execute()
-                                    new_id = res_db.data[0]['id'] if (res_db.data and len(res_db.data) > 0) else "مسجل"
-                                    st.success(f"🎉 تم تسجيل البلاغ بنجاح! رقم البلاغ الخاص بك هو: **#{new_id}**")
-                                except Exception as db_err:
-                                    st.error(f"تم التحليل بنجاح، لكن حدث خطأ أثناء الحفظ في قاعدة البيانات: {db_err}")
-                                    st.info("💡 تأكدي من وجود أعمدة (city, district, street, detections, confidence, status) في جدول reports داخل Supabase.")
-                            else:
-                                st.error("تعذر الاتصال بقاعدة البيانات Supabase.")
-
-                        except Exception as err:
-                            st.error(f"حدث خطأ أثناء معالجة الصورة: {err}")
+                        # إضافة البلاغ للذاكرة المؤقتة
+                        new_id = len(st.session_state['reports']) + 1001
+                        new_report = {
+                            "id": new_id,
+                            "city": city,
+                            "district": district,
+                            "street": street,
+                            "detections": detections,
+                            "confidence": f"{confidence_val:.1f}%",
+                            "status": "قيد المعالجة"
+                        }
+                        st.session_state['reports'].append(new_report)
+                        st.success(f"🎉 تم تسجيل البلاغ بنجاح! رقم البلاغ الخاص بك هو: **#{new_id}**")
 
 # ---------------------------------------------------------
 # 6. الصفحة الثانية: متابعة بلاغ
@@ -135,22 +112,20 @@ elif page == "متابعة بلاغ":
     report_id_input = st.text_input("أدخل رقم البلاغ:")
 
     if st.button("بحث 🔍"):
-        if report_id_input.isdigit() and supabase:
-            try:
-                res = supabase.table("reports").select("*").eq("id", int(report_id_input)).execute()
-                if res.data and len(res.data) > 0:
-                    rep = res.data[0]
-                    st.success(f"تفاصيل البلاغ رقم #{rep['id']}")
-                    st.write(f"**المدينة:** {rep.get('city', '-')}")
-                    st.write(f"**الحي:** {rep.get('district', '-')}")
-                    st.write(f"**الشارع:** {rep.get('street', '-')}")
-                    st.write(f"**عدد العيوب المرصودة:** {rep.get('detections', 0)}")
-                    st.write(f"**نسبة الثقة:** {rep.get('confidence', '-')}")
-                    st.info(f"**حالة البلاغ الحالية:** {rep.get('status', 'قيد المعالجة')}")
-                else:
-                    st.error("عذراً، لم يتم العثور على بلاغ بهذا الرقم.")
-            except Exception as e:
-                st.error(f"خطأ أثناء البحث: {e}")
+        if report_id_input.isdigit():
+            rep_id = int(report_id_input)
+            found = [r for r in st.session_state['reports'] if r['id'] == rep_id]
+            if found:
+                rep = found[0]
+                st.success(f"تفاصيل البلاغ رقم #{rep['id']}")
+                st.write(f"**المدينة:** {rep['city']}")
+                st.write(f"**الحي:** {rep['district']}")
+                st.write(f"**الشارع:** {rep['street']}")
+                st.write(f"**عدد العيوب المرصودة:** {rep['detections']}")
+                st.write(f"**نسبة الثقة:** {rep['confidence']}")
+                st.info(f"**حالة البلاغ الحالية:** {rep['status']}")
+            else:
+                st.error("عذراً، لم يتم العثور على بلاغ بهذا الرقم.")
         else:
             st.warning("يرجى إدخال رقم بلاغ صحيح.")
 
@@ -159,29 +134,17 @@ elif page == "متابعة بلاغ":
 # ---------------------------------------------------------
 elif page == "بوابة الموظفين (البلدية)":
     st.title("🏛️ لوحة تحكم أمانة / بلدية المنطقة")
+    st.subheader(f"📋 جميع البلاغات المسجلة ({len(st.session_state['reports'])})")
 
-    if supabase:
-        try:
-            res = supabase.table("reports").select("*").order("id", desc=True).execute()
-            reports_list = res.data if res.data else []
-        except Exception as e:
-            st.error(f"فشل جلب البلاغات من قاعدة البيانات: {e}")
-            reports_list = []
-    else:
-        reports_list = []
-
-    st.subheader(f"📋 جميع البلاغات المسجلة ({len(reports_list)})")
-
-    if reports_list:
-        for rep in reports_list:
-            with st.expander(f"بلاغ رقم #{rep['id']} - {rep.get('district', '')} ({rep.get('status', 'قيد المعالجة')})"):
-                st.write(f"**الموقع:** {rep.get('city', '')} - {rep.get('district', '')} - {rep.get('street', '')}")
-                st.write(f"**عدد الحفريات:** {rep.get('detections', 0)}")
-                st.write(f"**الدقة:** {rep.get('confidence', '')}")
+    if st.session_state['reports']:
+        for idx, rep in enumerate(st.session_state['reports']):
+            with st.expander(f"بلاغ رقم #{rep['id']} - {rep['district']} ({rep['status']})"):
+                st.write(f"**الموقع:** {rep['city']} - {rep['district']} - {rep['street']}")
+                st.write(f"**عدد الحفريات:** {rep['detections']}")
+                st.write(f"**الدقة:** {rep['confidence']}")
                 
                 status_options = ["قيد المعالجة", "جاري العمل ميدانياً", "تمت الصيانة وإغلاق البلاغ"]
-                current_status = rep.get('status', 'قيد المعالجة')
-                curr_idx = status_options.index(current_status) if current_status in status_options else 0
+                curr_idx = status_options.index(rep['status']) if rep['status'] in status_options else 0
 
                 new_status = st.selectbox(
                     "تحديث حالة البلاغ:",
@@ -191,11 +154,8 @@ elif page == "بوابة الموظفين (البلدية)":
                 )
 
                 if st.button("حفظ التحديث 💾", key=f"btn_update_{rep['id']}"):
-                    try:
-                        supabase.table("reports").update({"status": new_status}).eq("id", rep['id']).execute()
-                        st.success("تم تحديث حالة البلاغ بنجاح!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"فشل تحديث الحالة: {e}")
+                    st.session_state['reports'][idx]['status'] = new_status
+                    st.success("تم تحديث حالة البلاغ بنجاح!")
+                    st.rerun()
     else:
         st.info("لا توجد بلاغات مسجلة حالياً.")
