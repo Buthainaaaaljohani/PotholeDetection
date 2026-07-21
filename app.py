@@ -14,7 +14,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# تحميل ملف الاستايل الخارجي إذا كان موجوداً
+# تحميل ملف الاستايل الخارجي
 if os.path.exists("style.css"):
     with open("style.css") as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
@@ -22,15 +22,14 @@ if os.path.exists("style.css"):
 # ---------------------------------------------------------
 # 2. الإعداد والربط بقاعدة بيانات Supabase
 # ---------------------------------------------------------
-SUPABASE_URL = "https://lja-u87h8j10nde0zu-2cq-bfsgkq-8.supabase.co"  # ضع رابط مشروعك هنا إذا اختلف
-SUPABASE_KEY = "sb_publishable_ljA_u87H8J10nDE0zu_2CQ_BFsGKq_8"  # ضع المفتاح الكامل هنا
+SUPABASE_URL = "https://lja-u87h8j10nde0zu-2cq-bfsgkq-8.supabase.co"
+SUPABASE_KEY = "sb_publishable_ljA_u87H8J10nDE0zu_2CQ_BFsGKq_8"
 
 @st.cache_resource
 def init_supabase() -> Client:
     try:
         return create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
-        st.error(f"خطأ في الاتصال بقاعدة البيانات: {e}")
         return None
 
 supabase = init_supabase()
@@ -43,9 +42,7 @@ def load_model():
     model_path = "best.pt"
     if os.path.exists(model_path):
         return YOLO(model_path)
-    else:
-        st.error("لم يتم العثور على ملف النموذج best.pt!")
-        return None
+    return None
 
 model = load_model()
 
@@ -76,52 +73,59 @@ if page == "تقديم بلاغ جديد":
     with col2:
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
-            st.image(image, caption="الصورة المرفوعة", use_column_width=True)
+            st.image(image, caption="الصورة المرفوعة", use_container_width=True)
 
             if st.button("فحص الصورة وتسجيل البلاغ 🔍"):
                 if not district or not street:
                     st.warning("يرجى إدخال اسم الحي والشارع أولاً!")
                 elif model is None:
-                    st.error("النموذج غير متوفر للتحليل حالياً.")
+                    st.error("النموذج (best.pt) غير متوفر حالياً.")
                 else:
                     with st.spinner("جاري تحليل الصورة بواسطة الذكاء الاصطناعي..."):
-                        # حفظ الصورة في ملف مؤقت لمعالجتها بالنموذج
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                            image.save(tmp.name)
-                            tmp_path = tmp.name
+                        try:
+                            # حفظ مؤقت للصورة للتحليل
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                                image.convert("RGB").save(tmp.name)
+                                tmp_path = tmp.name
 
-                        results = model(tmp_path)
-                        res = results[0]
+                            results = model(tmp_path)
+                            res = results[0]
 
-                        # استخراج عدد الحفريات ودقة التنبؤ
-                        detections = len(res.boxes)
-                        confidence_val = 0.0
-                        if detections > 0:
-                            confidence_val = float(res.boxes.conf.max() * 100)
+                            detections = len(res.boxes)
+                            confidence_val = 0.0
+                            if detections > 0:
+                                confidence_val = float(res.boxes.conf.max() * 100)
 
-                        st.subheader("📊 نتيجة التحليل:")
-                        if detections > 0:
-                            st.error(f"⚠️ تم رصد عدد ({detections}) حفرية/عيب بكفاءة {confidence_val:.1f}%")
-                        else:
-                            st.success("✅ لم يتم رصد عيوب واضحة في الصورة.")
+                            st.subheader("📊 نتيجة التحليل:")
+                            if detections > 0:
+                                st.error(f"⚠️ تم رصد عدد ({detections}) حفرية/عيب بنسبة دقة {confidence_val:.1f}%")
+                            else:
+                                st.success("✅ لم يتم رصد عيوب واضحة في الصورة.")
 
-                        # حفظ البلاغ دائمياً في Supabase
-                        report_data = {
-                            "city": city,
-                            "district": district,
-                            "street": street,
-                            "detections": detections,
-                            "confidence": f"{confidence_val:.1f}%",
-                            "status": "قيد المعالجة"
-                        }
+                            # تجهيز بيانات البلاغ
+                            report_data = {
+                                "city": city,
+                                "district": district,
+                                "street": street,
+                                "detections": detections,
+                                "confidence": f"{confidence_val:.1f}%",
+                                "status": "قيد المعالجة"
+                            }
 
-                        if supabase:
-                            try:
-                                res_db = supabase.table("reports").insert(report_data).execute()
-                                new_id = res_db.data[0]['id'] if res_db.data else "مسجل"
-                                st.success(f"🎉 تم تسجيل البلاغ بنجاح في قاعدة البيانات! رقم البلاغ الخاص بك هو: **{new_id}**")
-                            except Exception as e:
-                                st.error(f"حدث خطأ أثناء حفظ البلاغ في قاعدة البيانات: {e}")
+                            # الحفظ في Supabase
+                            if supabase:
+                                try:
+                                    res_db = supabase.table("reports").insert(report_data).execute()
+                                    new_id = res_db.data[0]['id'] if (res_db.data and len(res_db.data) > 0) else "مسجل"
+                                    st.success(f"🎉 تم تسجيل البلاغ بنجاح! رقم البلاغ الخاص بك هو: **#{new_id}**")
+                                except Exception as db_err:
+                                    st.error(f"تم التحليل بنجاح، لكن حدث خطأ أثناء الحفظ في قاعدة البيانات: {db_err}")
+                                    st.info("💡 تأكدي من وجود أعمدة (city, district, street, detections, confidence, status) في جدول reports داخل Supabase.")
+                            else:
+                                st.error("تعذر الاتصال بقاعدة البيانات Supabase.")
+
+                        except Exception as err:
+                            st.error(f"حدث خطأ أثناء معالجة الصورة: {err}")
 
 # ---------------------------------------------------------
 # 6. الصفحة الثانية: متابعة بلاغ
@@ -134,19 +138,19 @@ elif page == "متابعة بلاغ":
         if report_id_input.isdigit() and supabase:
             try:
                 res = supabase.table("reports").select("*").eq("id", int(report_id_input)).execute()
-                if res.data:
+                if res.data and len(res.data) > 0:
                     rep = res.data[0]
                     st.success(f"تفاصيل البلاغ رقم #{rep['id']}")
-                    st.write(f"**المدينة:** {rep.get('city', '')}")
-                    st.write(f"**الحي:** {rep.get('district', '')}")
-                    st.write(f"**الشارع:** {rep.get('street', '')}")
+                    st.write(f"**المدينة:** {rep.get('city', '-')}")
+                    st.write(f"**الحي:** {rep.get('district', '-')}")
+                    st.write(f"**الشارع:** {rep.get('street', '-')}")
                     st.write(f"**عدد العيوب المرصودة:** {rep.get('detections', 0)}")
-                    st.write(f"**نسبة الثقة:** {rep.get('confidence', '')}")
+                    st.write(f"**نسبة الثقة:** {rep.get('confidence', '-')}")
                     st.info(f"**حالة البلاغ الحالية:** {rep.get('status', 'قيد المعالجة')}")
                 else:
                     st.error("عذراً، لم يتم العثور على بلاغ بهذا الرقم.")
             except Exception as e:
-                st.error(f"خطأ أثناء الاستعلام: {e}")
+                st.error(f"خطأ أثناء البحث: {e}")
         else:
             st.warning("يرجى إدخال رقم بلاغ صحيح.")
 
@@ -156,11 +160,10 @@ elif page == "متابعة بلاغ":
 elif page == "بوابة الموظفين (البلدية)":
     st.title("🏛️ لوحة تحكم أمانة / بلدية المنطقة")
 
-    # جلب كل البلاغات المباشرة من Supabase
     if supabase:
         try:
             res = supabase.table("reports").select("*").order("id", desc=True).execute()
-            reports_list = res.data
+            reports_list = res.data if res.data else []
         except Exception as e:
             st.error(f"فشل جلب البلاغات من قاعدة البيانات: {e}")
             reports_list = []
@@ -171,23 +174,26 @@ elif page == "بوابة الموظفين (البلدية)":
 
     if reports_list:
         for rep in reports_list:
-            with st.expander(f"بلاغ رقم #{rep['id']} - {rep.get('district', '')} ({rep.get('status', '')})"):
+            with st.expander(f"بلاغ رقم #{rep['id']} - {rep.get('district', '')} ({rep.get('status', 'قيد المعالجة')})"):
                 st.write(f"**الموقع:** {rep.get('city', '')} - {rep.get('district', '')} - {rep.get('street', '')}")
                 st.write(f"**عدد الحفريات:** {rep.get('detections', 0)}")
                 st.write(f"**الدقة:** {rep.get('confidence', '')}")
                 
-                # إمكانية تحديث حالة البلاغ من قبل الموظف
+                status_options = ["قيد المعالجة", "جاري العمل ميدانياً", "تمت الصيانة وإغلاق البلاغ"]
+                current_status = rep.get('status', 'قيد المعالجة')
+                curr_idx = status_options.index(current_status) if current_status in status_options else 0
+
                 new_status = st.selectbox(
                     "تحديث حالة البلاغ:",
-                    ["قيد المعالجة", "جاري العمل ميدانياً", "تمت الصيانة وإغلاق البلاغ"],
-                    index=["قيد المعالجة", "جاري العمل ميدانياً", "تمت الصيانة وإغلاق البلاغ"].index(rep.get('status', 'قيد المعالجة')) if rep.get('status') in ["قيد المعالجة", "جاري العمل ميدانياً", "تمت الصيانة وإغلاق البلاغ"] else 0,
+                    status_options,
+                    index=curr_idx,
                     key=f"status_select_{rep['id']}"
                 )
 
                 if st.button("حفظ التحديث 💾", key=f"btn_update_{rep['id']}"):
                     try:
                         supabase.table("reports").update({"status": new_status}).eq("id", rep['id']).execute()
-                        st.success("تم تحديث حالة البلاغ في قاعدة البيانات بنجاح!")
+                        st.success("تم تحديث حالة البلاغ بنجاح!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"فشل تحديث الحالة: {e}")
