@@ -1,4 +1,4 @@
-[08/02/48 08:31 ص] 🪽.: import streamlit as st
+import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
 import tempfile
@@ -117,8 +117,7 @@ elif st.session_state['current_page'] == "تقديم بلاغ":
         city = st.text_input("المدينة")
 
     st.write("")
-    analyze = st.
-[08/02/48 08:31 ص] 🪽.: button("تحليل الصورة وإرسال البلاغ", use_container_width=True)
+    analyze = st.button("تحليل الصورة وإرسال البلاغ", use_container_width=True)
 
     if analyze:
         if uploaded_file is None:
@@ -214,7 +213,7 @@ elif st.session_state['current_page'] == "متابعة بلاغ":
     st.write("")
     
     col1, col2, col3 = st.columns([1, 2, 1])
-[08/02/48 08:31 ص] 🪽.: with col2:
+    with col2:
         st.subheader("الاستعلام عن بلاغ")
         search_id = st.number_input("أدخل رقم البلاغ:", min_value=1, step=1, value=1)
         search_button = st.button("بحث عن البلاغ", use_container_width=True)
@@ -303,8 +302,7 @@ elif st.session_state['current_page'] == "دخول البلدية":
                     col1, col2 = st.columns([1, 2])
                     with col1:
                         if report.get('image_url'):
-                            st.
-[08/02/48 08:31 ص] 🪽.: image(report['image_url'], caption="صورة الحفرية المكتشفة", use_container_width=True)
+                            st.image(report['image_url'], caption="صورة الحفرية المكتشفة", use_container_width=True)
                     with col2:
                         st.write(f"**رقم البلاغ:** {report['id']}")
                         st.write(f"**الشارع:** {report['street']}")
