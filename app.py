@@ -141,13 +141,13 @@ elif st.session_state['current_page'] == "تقديم بلاغ":
 
                 timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                 file_path = f"report_{timestamp_str}_{uploaded_file.name}"
-                
-                try:
-                    supabase.storage.from_("pothole_images").upload(
-                        file_path, detected_bytes, {"content-type": "image/jpeg"}
-                    )
-                except Exception as e:
-                    st.warning(f"ملاحظة الرفع: {e}")
+              try:
+    supabase.storage.from_("pothole_images").upload(
+        file_path, detected_bytes, {"content-type": "image/jpeg"}
+    )
+except Exception as e:
+    st.error(f"سبب خطأ الرفع بالتفصيل: {e}")
+    st.stop()
 
                 image_url = f"{SUPABASE_URL}/storage/v1/object/public/pothole_images/{file_path}"
 
