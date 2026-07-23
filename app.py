@@ -117,7 +117,7 @@ elif st.session_state['current_page'] == "تقديم بلاغ":
         city = st.text_input("المدينة")
 
     st.write("")
-    analyze = st.button("تحليل الصورة وإرسال البلاغ", use_container_width=True)
+    button("تحليل الصورة وإرسال البلاغ", use_container_width=True)
 
     if analyze:
         if uploaded_file is None:
@@ -125,24 +125,20 @@ elif st.session_state['current_page'] == "تقديم بلاغ":
         elif street.strip() == "" or district.strip() == "" or city.strip() == "":
             st.warning("الرجاء إدخال بيانات الموقع بالكامل.")
         else:
-            with st.spinner("جاري تحليل الصورة ورفع البلاغ..."):
-                # تحويل نمط الألوان إلى RGB
+            with st.spinner("جاري تحليل الصورة ورفعها إلى Supabase..."):
                 image = Image.open(uploaded_file).convert('RGB')
                 temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
                 image.save(temp_file.name)
 
-                # تحليل الصورة بواسطة YOLO
                 results = model.predict(source=temp_file.name, conf=0.25, save=False)
                 result = results[0]
                 plotted = result.plot()
                 detected_image = Image.fromarray(plotted)
 
-                # تحويل الصورة المحللة لمصفوفة بايتبل لرفعها إلى Supabase Storage
                 img_byte_arr = io.BytesIO()
                 detected_image.save(img_byte_arr, format='JPEG')
                 detected_bytes = img_byte_arr.getvalue()
 
-                # رفع الصورة المحللة لـ pothole_images
                 timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                 file_path = f"report_{timestamp_str}_{uploaded_file.name}"
                 
@@ -150,10 +146,9 @@ elif st.session_state['current_page'] == "تقديم بلاغ":
                     supabase.storage.from_("pothole_images").upload(
                         file_path, detected_bytes, {"content-type": "image/jpeg"}
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    st.warning(f"ملاحظة الرفع: {e}")
 
-                # بناء رابط الصورة العام المباشر
                 image_url = f"{SUPABASE_URL}/storage/v1/object/public/pothole_images/{file_path}"
 
                 detections = len(result.boxes)
@@ -164,7 +159,6 @@ elif st.session_state['current_page'] == "تقديم بلاغ":
                 else:
                     status_text = "لم يتم اكتشاف حفريات"
 
-                # حفظ البيانات بجدول Supabase (reports)
                 data = {
                     "city": str(city).strip(),
                     "district": str(district).strip(),
@@ -180,10 +174,10 @@ elif st.session_state['current_page'] == "تقديم بلاغ":
                     else:
                         report_id = "تم التسجيل"
                 except Exception as e:
-                    st.error(f"تفاصيل الخطأ الدقيقة من Supabase: {e}")
+                    st.error(f"خطأ في حفظ البيانات بقاعدة البيانات: {e}")
                     st.stop()
 
-            st.success("اكتمل تحليل الصورة وبناء البلاغ بنجاح")
+            st.success("اكتمل تحليل الصورة وإرسال البلاغ بنجاح")
             st.divider()
 
             col1, col2 = st.columns(2)
@@ -207,14 +201,14 @@ elif st.session_state['current_page'] == "تقديم بلاغ":
 
             st.divider()
             st.info(f"بيانات الموقع:\n- الشارع: {street}\n- الحي: {district}\n- المدينة: {city}")
-            st.success(f"تم تسجيل البلاغ وإرساله للبلدية بنجاح. رقم البلاغ الخاص بك هو: **{report_id}**")
+            st.success(f"تم تسجيل البلاغ وإرساله للبلدية بنجاح. رقم البلاغ الخاص بك هو: {report_id}")
 
 # =========================================================
 # 3. صفحة متابعة بلاغ
 # =========================================================
 elif st.session_state['current_page'] == "متابعة بلاغ":
 
-if st.button("العودة للقائمة الرئيسية", key="back_home_track"):
+    if st.button("العودة للقائمة الرئيسية", key="back_home_track"):
         st.session_state['current_page'] = "الرئيسية"
         st.rerun()
 
@@ -223,31 +217,31 @@ if st.button("العودة للقائمة الرئيسية", key="back_home_trac
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.subheader("الاستعلام عن بلاغ")
+    st.subheader("الاستعلام عن بلاغ")
         search_id = st.number_input("أدخل رقم البلاغ:", min_value=1, step=1, value=1)
         search_button = st.button("بحث عن البلاغ", use_container_width=True)
 
         if search_button:
-            res = supabase.table("reports").select("*").eq("id", search_id).execute()
-            if res.data:
-                found_report = res.data[0]
-                st.success(f"تم العثور على البلاغ رقم: {found_report['id']}")
-                st.divider()
-                st.write(f"حالة البلاغ الحالية: {found_report['status']}")
-                st.write(f"الموقع: {found_report['city']} - حي {found_report['district']} - شارع {found_report['street']}")
-                st.divider()
-                
-                img_link = found_report.get('image_url')
-                if img_link and img_link.startswith("http"):
-                    try:
+            try:
+                res = supabase.table("reports").select("*").eq("id", search_id).execute()
+                if res.data and len(res.data) > 0:
+                    found_report = res.data[0]
+                    st.success(f"تم العثور على البلاغ رقم: {found_report['id']}")
+                    st.divider()
+                    st.write(f"حالة البلاغ الحالية: {found_report['status']}")
+                    st.write(f"الموقع: {found_report['city']} - حي {found_report['district']} - شارع {found_report['street']}")
+                    st.divider()
+                    
+                    img_link = found_report.get('image_url')
+                    if img_link and img_link.startswith("http"):
                         st.image(img_link, caption="الصورة المحللة للبلاغ", use_container_width=True)
-                    except Exception as e:
-                        st.error(f"تعذر عرض الصورة، تأكد من إعدادات الـ Public في Supabase Storage. الخطأ: {e}")
+                    else:
+                        st.info("لا تتوفر صورة محللة لهذا البلاغ.")
                 else:
-                    st.info("لا تتوفر صورة محللة لهذا البلاغ.")
-            else:
-                st.error("لم يتم العثور على بلاغ بهذا الرقم. الرجاء التأكد من الرقم والمحاولة مرة أخرى.")
- 
+                    st.error("لم يتم العثور على بلاغ بهذا الرقم.")
+            except Exception as e:
+                st.error(f"حدث خطأ أثناء جلب البيانات: {e}")
+
 # =========================================================
 # 4. صفحة دخول البلدية
 # =========================================================
@@ -291,14 +285,16 @@ elif st.session_state['current_page'] == "دخول البلدية":
 
         st.divider()
         
-        # جلب جميع البلاغات من Supabase
-        reports_res = supabase.table("reports").select("*").order("id", desc=True).execute()
-        reports = reports_res.data
+        try:
+            reports_res = supabase.table("reports").select("*").order("id", desc=True).execute()
+            reports = reports_res.data if reports_res.data else []
+        except Exception:
+            reports = []
 
         total_reports = len(reports)
-        pending_reports = sum(1 for r in reports if r['status'] == "قيد المعالجة")
-        in_progress_reports = sum(1 for r in reports if r['status'] == "جاري العمل ميدانياً")
-        completed_reports = sum(1 for r in reports if r['status'] == "تمت المعالجة")
+        pending_reports = sum(1 for r in reports if r.get('status') == "قيد المعالجة")
+        in_progress_reports = sum(1 for r in reports if r.get('status') == "جاري العمل ميدانياً")
+        completed_reports = sum(1 for r in reports if r.get('status') == "تمت المعالجة")
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("إجمالي البلاغات", total_reports)
@@ -308,12 +304,12 @@ elif st.session_state['current_page'] == "دخول البلدية":
 
         st.divider()
         st.subheader("قائمة البلاغات الواردة")
-
+        
         if len(reports) == 0:
             st.info("لا توجد بلاغات مقدمة حتى الآن.")
         else:
             status_options = ["قيد المعالجة", "جاري العمل ميدانياً", "تمت المعالجة"]
-            for idx, report in enumerate(reports):
+        for idx, report in enumerate(reports):
                 with st.expander(f"بلاغ رقم {report['id']} - {report['city']} ({report['district']}) | الحالة: {report['status']}"):
                     col1, col2 = st.columns([1, 2])
                     with col1:
@@ -323,10 +319,10 @@ elif st.session_state['current_page'] == "دخول البلدية":
                         else:
                             st.info("لا تتوفر صورة لهذا البلاغ")
                     with col2:
-                        st.write(f"**رقم البلاغ:** {report['id']}")
-                        st.write(f"**الشارع:** {report['street']}")
-                        st.write(f"**الحي:** {report['district']}")
-                        st.write(f"**المدينة:** {report['city']}")
+                        st.write(f"رقم البلاغ: {report['id']}")
+                        st.write(f"الشارع: {report['street']}")
+                        st.write(f"الحي: {report['district']}")
+                        st.write(f"المدينة: {report['city']}")
                         st.write("---")
 
                         current_status = report['status'] if report['status'] in status_options else "قيد المعالجة"
@@ -343,3 +339,4 @@ elif st.session_state['current_page'] == "دخول البلدية":
                             supabase.table("reports").update({"status": new_status}).eq("id", report['id']).execute()
                             st.success("تم تحديث حالة البلاغ بنجاح في قاعدة البيانات!")
                             st.rerun()
+    analyze = st.
