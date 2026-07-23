@@ -214,7 +214,7 @@ elif st.session_state['current_page'] == "تقديم بلاغ":
 # =========================================================
 elif st.session_state['current_page'] == "متابعة بلاغ":
 
-    if st.button("العودة للقائمة الرئيسية", key="back_home_track"):
+if st.button("العودة للقائمة الرئيسية", key="back_home_track"):
         st.session_state['current_page'] = "الرئيسية"
         st.rerun()
 
