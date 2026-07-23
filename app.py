@@ -214,7 +214,7 @@ elif st.session_state['current_page'] == "تقديم بلاغ":
 # =========================================================
 elif st.session_state['current_page'] == "متابعة بلاغ":
 
- if st.button("العودة للقائمة الرئيسية", key="back_home_track"):
+    if st.button("العودة للقائمة الرئيسية", key="back_home_track"):
         st.session_state['current_page'] = "الرئيسية"
         st.rerun()
 
@@ -233,18 +233,21 @@ elif st.session_state['current_page'] == "متابعة بلاغ":
                 found_report = res.data[0]
                 st.success(f"تم العثور على البلاغ رقم: {found_report['id']}")
                 st.divider()
-                st.write(f"**حالة البلاغ الحالية:** {found_report['status']}")
-                st.write(f"**الموقع:** {found_report['city']} - حي {found_report['district']} - شارع {found_report['street']}")
+                st.write(f"حالة البلاغ الحالية: {found_report['status']}")
+                st.write(f"الموقع: {found_report['city']} - حي {found_report['district']} - شارع {found_report['street']}")
                 st.divider()
                 
                 img_link = found_report.get('image_url')
                 if img_link and img_link.startswith("http"):
-                    st.image(img_link, caption="الصورة المحللة للبلاغ", use_container_width=True)
+                    try:
+                        st.image(img_link, caption="الصورة المحللة للبلاغ", use_container_width=True)
+                    except Exception as e:
+                        st.error(f"تعذر عرض الصورة، تأكد من إعدادات الـ Public في Supabase Storage. الخطأ: {e}")
                 else:
                     st.info("لا تتوفر صورة محللة لهذا البلاغ.")
             else:
                 st.error("لم يتم العثور على بلاغ بهذا الرقم. الرجاء التأكد من الرقم والمحاولة مرة أخرى.")
-
+ 
 # =========================================================
 # 4. صفحة دخول البلدية
 # =========================================================
